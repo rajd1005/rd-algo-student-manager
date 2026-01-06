@@ -66,13 +66,23 @@ class RD_Algo_DB {
 
     public function search_student($term) {
         $t_stu = $this->opts['tb_student'] ?? 'wp_gf_student_registrations';
+        
+        // 1. Clean the input to just digits
         $clean = preg_replace('/[^0-9]/', '', $term);
+        
+        // 2. Logic Fix: If length > 10 (e.g. 919876543210), take only the last 10 digits (9876543210)
+        // This allows matches against DB records that don't have the country code.
+        $search_phone = (strlen($clean) > 10) ? substr($clean, -10) : $clean;
+
         $sql = "SELECT * FROM $t_stu WHERE student_name LIKE %s OR student_email LIKE %s OR mt4_server_id LIKE %s OR vps_host_name LIKE %s OR anydesk_id LIKE %s";
         $args = array_fill(0, 5, '%'.$this->wpdb->esc_like($term).'%');
-        if(strlen($clean)>2) {
+        
+        // Use the smart $search_phone variable here
+        if(strlen($search_phone)>2) {
             $sql .= " OR REPLACE(REPLACE(REPLACE(student_phone,' ',''),'-',''),'+','') LIKE %s";
             $sql .= " OR REPLACE(REPLACE(REPLACE(student_phone_alt,' ',''),'-',''),'+','') LIKE %s";
-            $args[] = '%'.$clean.'%'; $args[] = '%'.$clean.'%';
+            $args[] = '%'.$search_phone.'%'; 
+            $args[] = '%'.$search_phone.'%';
         }
         return $this->wpdb->get_results($this->wpdb->prepare($sql, $args));
     }
