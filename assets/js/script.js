@@ -105,15 +105,16 @@ jQuery(document).ready(function($) {
     function reloadCard() { 
         if(!window.currentStuId) return;
         $.post(rd_ajax.ajax_url, {action:'rd_get_single_student', id:window.currentStuId, nonce:rd_ajax.nonce}, function(r){ 
-            if(r.success) renderStudentCard(r.data.stu, r.data.perms, r.data.labels); 
+            if(r.success) renderStudentCard(r.data.stu, r.data.perms, r.data.labels, r.data.meta); 
         }); 
     }
 
     // --- RENDER CARD ---
-    function renderStudentCard(stu, perms, labels) {
+    function renderStudentCard(stu, perms, labels, meta) {
         if(!stu) return;
         window.currentStu = stu; window.currentPerms = perms; window.currentStuId = stu.id;
-        
+        window.currentMeta = meta || {}; // Store it for use in logic
+
         // Define settings variables here to prevent Scope Errors
         let rdVars = (typeof rd_vars !== 'undefined') ? rd_vars : {};
 
@@ -168,13 +169,39 @@ jQuery(document).ready(function($) {
             if(pButtons.includes('remove_mt4') && stu.mt4_server_id) c += `<div class="mt-4"><button class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs" onclick="doAction('remove_mt4')">Remove MT4</button></div>`;
             let b = '';
             
-            // Check 'Force Renew' setting (!rdVars.mt4_only_renew)
-            if((!stu.mt4_server_id || (stu.mt4_data && stu.mt4_is_expired)) && pButtons.includes('assign_mt4') && !rdVars.mt4_only_renew) {
-                b += `<div class="flex items-center gap-2 mt-4 bg-blue-50 p-3 rounded border border-blue-100"><select id="rd-mt4-type" class="p-2 border rounded text-sm bg-white"></select><button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow text-sm font-medium transition" onclick="doAssignMT4()">Assign New</button></div>`; fetchDatetypes();
+            // --- NEW: MT4 SMART LOGIC (Conflict + Stock Override) ---
+            let mt4Stock = (window.currentMeta && window.currentMeta.mt4_stock) ? parseInt(window.currentMeta.mt4_stock) : 0;
+            let mt4Conflict = (window.currentMeta && window.currentMeta.mt4_conflict) || false;
+
+            // Default Admin Settings
+            let showAssign = !rdVars.mt4_only_renew;
+            let showRenew = !rdVars.mt4_only_assign;
+            let assignMsg = "";
+
+            // 1. Conflict Check (Highest Priority)
+            if (stu.mt4_server_id && mt4Conflict) {
+                showAssign = true;
+                showRenew = false; // Block renewal to prevent reviving shared expired user
+                assignMsg = `<div class="w-full text-xs text-red-600 font-bold mb-2"><i class="fa-solid fa-triangle-exclamation"></i> Shared User Expired: Must Assign New.</div>`;
+            } 
+            // 2. Stock Availability Check (Overrides Admin Settings)
+            else if (stu.mt4_server_id && stu.mt4_is_expired) {
+                if (mt4Stock >= 4) {
+                    showAssign = true;
+                    showRenew = false; // Force Assign (Stock is healthy)
+                } else {
+                    showAssign = false;
+                    showRenew = true; // Force Renew (Stock is low)
+                }
+            }
+
+            // Render Assign Button
+            if ((!stu.mt4_server_id || (stu.mt4_data && stu.mt4_is_expired)) && pButtons.includes('assign_mt4') && showAssign) {
+                b += `<div class="flex flex-wrap items-center gap-2 mt-4 bg-blue-50 p-3 rounded border border-blue-100">${assignMsg}<select id="rd-mt4-type" class="p-2 border rounded text-sm bg-white"></select><button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow text-sm font-medium transition" onclick="doAssignMT4()">Assign New</button></div>`; fetchDatetypes();
             }
             
-            // Check 'Force Assign' setting (!rdVars.mt4_only_assign)
-            if(stu.mt4_server_id && stu.mt4_is_expired && pButtons.includes('renew_mt4') && !rdVars.mt4_only_assign) {
+            // Render Renew Button
+            if (stu.mt4_server_id && stu.mt4_is_expired && pButtons.includes('renew_mt4') && showRenew) {
                 b += `<div class="flex items-center gap-2 mt-4 bg-green-50 p-3 rounded border border-green-100">${getDurationSelect('rd-renew-mt4-dur')}<button class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow text-sm font-medium transition" onclick="doRenewMT4()">Renew</button></div>`;
             }
             
@@ -189,13 +216,29 @@ jQuery(document).ready(function($) {
             if(pButtons.includes('remove_vps') && stu.vps_host_name) c += `<div class="mt-4"><button class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs" onclick="doAction('remove_vps')">Remove VPS</button></div>`;
             let b = '';
             
-            // Check 'Force Renew' setting (!rdVars.vps_only_renew)
-            if((!stu.vps_host_name || (stu.vps_data && stu.vps_is_expired)) && pButtons.includes('assign_vps') && !rdVars.vps_only_renew) {
-                b += `<div class="mt-4"><button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow text-sm font-medium transition" onclick="doAction('assign_vps')">Assign New VPS</button></div>`;
+            // --- NEW: VPS SMART LOGIC (Conflict Only) ---
+            // Note: Stock logic does NOT apply here per requirements.
+            let vpsConflict = (window.currentMeta && window.currentMeta.vps_conflict) || false;
+
+            // Default Admin Settings
+            let showVpsAssign = !rdVars.vps_only_renew;
+            let showVpsRenew = !rdVars.vps_only_assign;
+            let vpsMsg = "";
+
+            // 1. Conflict Check Only
+            if (stu.vps_host_name && vpsConflict) {
+                showVpsAssign = true;
+                showVpsRenew = false;
+                vpsMsg = `<div class="w-full text-xs text-red-600 font-bold mb-2"><i class="fa-solid fa-triangle-exclamation"></i> Shared User Expired: Must Assign New.</div>`;
             }
             
-            // Check 'Force Assign' setting (!rdVars.vps_only_assign)
-            if(stu.vps_host_name && stu.vps_is_expired && pButtons.includes('renew_vps') && !rdVars.vps_only_assign) {
+            // Render VPS Assign
+            if ((!stu.vps_host_name || (stu.vps_data && stu.vps_is_expired)) && pButtons.includes('assign_vps') && showVpsAssign) {
+                b += `<div class="mt-4 bg-blue-50 p-3 rounded border border-blue-100">${vpsMsg}<button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow text-sm font-medium transition" onclick="doAction('assign_vps')">Assign New VPS</button></div>`;
+            }
+            
+            // Render VPS Renew
+            if (stu.vps_host_name && stu.vps_is_expired && pButtons.includes('renew_vps') && showVpsRenew) {
                 b += `<div class="flex items-center gap-2 mt-4 bg-green-50 p-3 rounded border border-green-100">${getDurationSelect('rd-renew-vps-dur')}<button class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow text-sm font-medium transition" onclick="doRenewVPS()">Renew</button></div>`;
             }
             
@@ -346,7 +389,7 @@ let safeText = b.text
             $('#rd-search-results').addClass('hidden');
             $('#rd-student-search').val('');
             $.post(rd_ajax.ajax_url, {action:'rd_get_single_student', id:stu.id, nonce:rd_ajax.nonce}, function(r){
-                if(r.success) renderStudentCard(r.data.stu, r.data.perms, r.data.labels);
+                if(r.success) renderStudentCard(r.data.stu, r.data.perms, r.data.labels, r.data.meta);
             });
         }
     });
