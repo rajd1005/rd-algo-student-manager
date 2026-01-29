@@ -114,6 +114,9 @@ jQuery(document).ready(function($) {
         if(!stu) return;
         window.currentStu = stu; window.currentPerms = perms; window.currentStuId = stu.id;
         
+        // Define settings variables here to prevent Scope Errors
+        let rdVars = (typeof rd_vars !== 'undefined') ? rd_vars : {};
+
         let pButtons = (perms && perms.buttons) ? perms.buttons : [];
         let pAccs = (perms && perms.accordions) ? perms.accordions : {};
         let editBtn = (perms && (perms.can_edit_primary || perms.can_edit_secondary)) ? `<button class="rd-edit-profile-btn text-gray-500 hover:text-blue-600 transition p-2 rounded-full hover:bg-blue-50"><i class="fa-solid fa-pen-to-square text-lg"></i></button>` : '';
@@ -164,12 +167,17 @@ jQuery(document).ready(function($) {
             else if(stu.mt4_server_id) c = `<p class="text-red-500 text-sm">ID: ${stu.mt4_server_id} (Data Missing)</p>`;
             if(pButtons.includes('remove_mt4') && stu.mt4_server_id) c += `<div class="mt-4"><button class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs" onclick="doAction('remove_mt4')">Remove MT4</button></div>`;
             let b = '';
-            if((!stu.mt4_server_id || (stu.mt4_data && stu.mt4_is_expired)) && pButtons.includes('assign_mt4')) {
+            
+            // Check 'Force Renew' setting (!rdVars.mt4_only_renew)
+            if((!stu.mt4_server_id || (stu.mt4_data && stu.mt4_is_expired)) && pButtons.includes('assign_mt4') && !rdVars.mt4_only_renew) {
                 b += `<div class="flex items-center gap-2 mt-4 bg-blue-50 p-3 rounded border border-blue-100"><select id="rd-mt4-type" class="p-2 border rounded text-sm bg-white"></select><button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow text-sm font-medium transition" onclick="doAssignMT4()">Assign New</button></div>`; fetchDatetypes();
             }
-            if(stu.mt4_server_id && stu.mt4_is_expired && pButtons.includes('renew_mt4')) {
+            
+            // Check 'Force Assign' setting (!rdVars.mt4_only_assign)
+            if(stu.mt4_server_id && stu.mt4_is_expired && pButtons.includes('renew_mt4') && !rdVars.mt4_only_assign) {
                 b += `<div class="flex items-center gap-2 mt-4 bg-green-50 p-3 rounded border border-green-100">${getDurationSelect('rd-renew-mt4-dur')}<button class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow text-sm font-medium transition" onclick="doRenewMT4()">Renew</button></div>`;
             }
+            
             if(b) c += b;
             accHtml += buildAccordion(`MT4 Details ${stu.mt4_status_display||''}`, c);
         }
@@ -180,12 +188,17 @@ jQuery(document).ready(function($) {
             else if(stu.vps_host_name) c = `<p class="text-gray-500 text-sm">Host: ${stu.vps_host_name}</p>`;
             if(pButtons.includes('remove_vps') && stu.vps_host_name) c += `<div class="mt-4"><button class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs" onclick="doAction('remove_vps')">Remove VPS</button></div>`;
             let b = '';
-            if((!stu.vps_host_name || (stu.vps_data && stu.vps_is_expired)) && pButtons.includes('assign_vps')) {
+            
+            // Check 'Force Renew' setting (!rdVars.vps_only_renew)
+            if((!stu.vps_host_name || (stu.vps_data && stu.vps_is_expired)) && pButtons.includes('assign_vps') && !rdVars.vps_only_renew) {
                 b += `<div class="mt-4"><button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow text-sm font-medium transition" onclick="doAction('assign_vps')">Assign New VPS</button></div>`;
             }
-            if(stu.vps_host_name && stu.vps_is_expired && pButtons.includes('renew_vps')) {
+            
+            // Check 'Force Assign' setting (!rdVars.vps_only_assign)
+            if(stu.vps_host_name && stu.vps_is_expired && pButtons.includes('renew_vps') && !rdVars.vps_only_assign) {
                 b += `<div class="flex items-center gap-2 mt-4 bg-green-50 p-3 rounded border border-green-100">${getDurationSelect('rd-renew-vps-dur')}<button class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow text-sm font-medium transition" onclick="doRenewVPS()">Renew</button></div>`;
             }
+            
             if(b) c += b;
             accHtml += buildAccordion(`VPS Details ${stu.vps_status_display||''}`, c);
         }

@@ -127,7 +127,7 @@ class RD_Algo_Ajax {
                 $student->mt4_data = $m; 
                 if(!empty($m->$c_mt4_exp)) { 
                     $d=ceil((strtotime($m->$c_mt4_exp)-time())/86400); 
-                    if($d>=0)$mt4_status='<span class="rd-success" style="font-size:12px; margin-left:8px;">(Expires in '.$d.' days)</span>'; 
+                    if($d>0)$mt4_status='<span class="rd-success" style="font-size:12px; margin-left:8px;">(Expires in '.$d.' days)</span>'; 
                     else { $student->mt4_is_expired=true; $mt4_status='<span class="rd-err" style="font-size:12px; margin-left:8px;">(Expired '.abs($d).' days ago)</span>'; } 
                 } 
             }
@@ -143,7 +143,7 @@ class RD_Algo_Ajax {
                 $student->vps_data = $v; 
                 if(!empty($v->$c_vps_exp)) { 
                     $d=ceil((strtotime($v->$c_vps_exp)-time())/86400); 
-                    if($d>=0)$vps_status='<span class="rd-success" style="font-size:12px; margin-left:8px;">(Expires in '.$d.' days)</span>'; 
+                    if($d>0)$vps_status='<span class="rd-success" style="font-size:12px; margin-left:8px;">(Expires in '.$d.' days)</span>'; 
                     else { $student->vps_is_expired=true; $vps_status='<span class="rd-err" style="font-size:12px; margin-left:8px;">(Expired '.abs($d).' days ago)</span>'; } 
                 } 
             }
