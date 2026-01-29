@@ -198,7 +198,26 @@ class RD_Algo_Ajax {
             'dwn' => 'Downgrade'
         ];
 
-        return ['stu' => $student, 'perms' => $perms, 'labels' => $labels];
+        // --- NEW: LOGIC FOR CONFLICTS & STOCK ---
+        $counters = $this->db->get_counters();
+        $t_stu = $this->opts['tb_student'] ?? 'wp_gf_student_registrations';
+        $today = date('Y-m-d');
+
+        // Helper: Check if asset is shared with an EXPIRED student (Conflict)
+        $check_conflict = function($col, $val) use ($wpdb, $t_stu, $student, $today) {
+            if(empty($val)) return false;
+            // Count other students with same Asset ID who are Expired
+            $sql = "SELECT COUNT(*) FROM $t_stu WHERE $col = %s AND id != %d AND student_expiry_date < %s";
+            return $wpdb->get_var($wpdb->prepare($sql, $val, $student->id, $today)) > 0;
+        };
+
+        $meta = [
+            'mt4_conflict' => $check_conflict('mt4_server_id', $student->mt4_server_id),
+            'vps_conflict' => $check_conflict('vps_host_name', $student->vps_host_name),
+            'mt4_stock'    => $counters['mt4_free'] // Only need MT4 stock for logic
+        ];
+
+        return ['stu' => $student, 'perms' => $perms, 'labels' => $labels, 'meta' => $meta];
     }
 
     public function update_student_profile() { check_ajax_referer('rd_algo_nonce', 'nonce'); global $wpdb; $id=intval($_POST['id']); $data=$_POST['data']; $updates=[]; if($this->has_role_permission('roles_primary')){ if(isset($data['student_name']))$updates['student_name']=sanitize_text_field($data['student_name']); if(isset($data['student_email']))$updates['student_email']=sanitize_email($data['student_email']); if(isset($data['student_phone']))$updates['student_phone']=sanitize_text_field($data['student_phone']); if(isset($data['student_expiry_date']))$updates['student_expiry_date']=sanitize_text_field($data['student_expiry_date']); } if($this->has_role_permission('roles_secondary')){ if(isset($data['student_phone_alt']))$updates['student_phone_alt']=sanitize_text_field($data['student_phone_alt']); if(isset($data['anydesk_id']))$updates['anydesk_id']=sanitize_text_field($data['anydesk_id']); } if(!empty($updates)){ $wpdb->update($this->opts['tb_student'], $updates, ['id'=>$id]); wp_send_json_success("Updated"); } else wp_send_json_error("No Changes"); }
@@ -354,17 +373,6 @@ class RD_Algo_Ajax {
             
             case 'renew_mt4':
                 if(empty($stu->mt4_server_id)) wp_send_json_error("No MT4"); 
-                
-                // Logic: Check Renewal Count (Limit 11)
-                $cnt_key = 'rd_rcnt_mt4_' . $stu->mt4_server_id;
-                $cnt = (int)get_option($cnt_key, 0);
-                if($cnt >= 11) {
-                    // Limit Reached (12th attempt)
-                    // Delete from Student Table (All students with this ID)
-                    $wpdb->update($this->opts['tb_student'], ['mt4_server_id'=>null], ['mt4_server_id'=>$stu->mt4_server_id]);
-                    // Inform User
-                    wp_send_json_error("Assign New, Coz its already assign 12 time.");
-                }
 
                 $m=intval($_POST['duration']); if(!$m) wp_send_json_error("Invalid Duration");
                 $c_pk = $this->opts['col_mt4_login'] ?? 'mt4userid'; $c_exp = $this->opts['col_mt4_expiry'] ?? 'mt4expirydate';
@@ -374,26 +382,12 @@ class RD_Algo_Ajax {
                 $new=date('Y-m-d', strtotime("+$m months -1 day")); 
                 $wpdb->update($this->opts['tb_mt4'], [$c_exp=>$new], [$c_pk=>$stu->mt4_server_id]);
                 
-                // Increment Count
-                update_option($cnt_key, $cnt+1);
-                
                 $this->process_gf_automation('renew_mt4', $stu, (array)$asset); 
                 wp_send_json_success("Renewed"); 
                 break;
 
             case 'renew_vps':
                 if(empty($stu->vps_host_name)) wp_send_json_error("No VPS");
-                
-                // Logic: Check Renewal Count (Limit 11)
-                $cnt_key = 'rd_rcnt_vps_' . $stu->vps_host_name;
-                $cnt = (int)get_option($cnt_key, 0);
-                if($cnt >= 11) {
-                    // Limit Reached
-                    // Delete from Student Table (All students with this Host)
-                    $wpdb->update($this->opts['tb_student'], ['vps_host_name'=>null], ['vps_host_name'=>$stu->vps_host_name]);
-                    // Inform User
-                    wp_send_json_error("Assign New, Coz its already assign 12 time.");
-                }
 
                 $m=intval($_POST['duration']); if(!$m) wp_send_json_error("Invalid Duration");
                 $c_pk = $this->opts['col_vps_host'] ?? 'host_name'; $c_exp = $this->opts['col_vps_expiry'] ?? 'vps_expier';
@@ -402,9 +396,6 @@ class RD_Algo_Ajax {
                 // --- DATE CALCULATION UPDATE (-1 DAY) ---
                 $new=date('Y-m-d', strtotime("+$m months -1 day")); 
                 $wpdb->update($this->opts['tb_vps'], [$c_exp=>$new], [$c_pk=>$stu->vps_host_name]);
-                
-                // Increment Count
-                update_option($cnt_key, $cnt+1);
                 
                 $this->process_gf_automation('renew_vps', $stu, (array)$asset); 
                 wp_send_json_success("Renewed"); 
